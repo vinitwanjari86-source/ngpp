@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Share Your Cafe Experience</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap">
+<style>
+  body { font-family: "Poppins", Arial, sans-serif; margin:0; padding:20px; background: linear-gradient(180deg,#fffaf0,#fff4e6); min-height:100vh; }
+  .wrap { max-width:720px; margin:10px auto; background:white; border-radius:14px; padding:20px; box-shadow:0 8px 30px rgba(0,0,0,0.08); }
+  h1 { margin:0 0 12px; color:#6b4f2d; font-size:20px; }
+  label { display:block; margin-top:12px; font-weight:600; color:#4b3b2f; }
+  input[type="file"] { margin-top:8px; }
+  .preview { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .preview img { width:110px; height:80px; object-fit:cover; border-radius:8px; border:1px solid #f0d9bf; }
+  textarea, input[type="text"], select { width:100%; padding:12px; border-radius:10px; border:1px solid #e6cfae; background:#fffaf5; margin-top:8px; }
+  .row { display:flex; gap:10px; margin-top:12px; }
+  .btn { display:inline-block; padding:12px 18px; background:#d98e38; color:white; border-radius:10px; border:none; cursor:pointer; font-weight:700; }
+  .small { font-size:13px; color:#6b4f2d; margin-top:8px; }
+  .entries { margin-top:18px; border-top:1px dashed #f0d9bf; padding-top:12px; }
+  .entry { padding:10px; border-radius:8px; background:#fff8f0; margin-bottom:10px; border-left:4px solid #d98e38; }
+  .qr-box { text-align:center; margin-top:18px; }
+  @media (max-width:520px){ .row{flex-direction:column;} .preview img{width:80px;height:60px;} }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <h1>Share your experience</h1>
+
+  <label for="photos">Upload photo(s) (optional)</label>
+  <input id="photos" type="file" accept="image/*" multiple>
+
+  <div class="preview" id="preview"></div>
+
+  <label for="name">Your name (optional)</label>
+  <input id="name" type="text" placeholder="Ex: Rahul / Priya">
+
+  <label for="feedback">Feedback / Experience</label>
+  <textarea id="feedback" placeholder="Tell us about the taste, service, vibe..." rows="4"></textarea>
+
+  <label for="rating">Rating</label>
+  <select id="rating">
+    <option value="5">⭐⭐⭐⭐⭐ 5 - Excellent</option>
+    <option value="4">⭐⭐⭐⭐ 4 - Very Good</option>
+    <option value="3">⭐⭐⭐ 3 - Good</option>
+    <option value="2">⭐⭐ 2 - Needs improvement</option>
+    <option value="1">⭐ 1 - Poor</option>
+  </select>
+
+  <div class="row">
+    <button id="submitBtn" class="btn">Submit Feedback</button>
+    <button id="clearBtn" class="btn" style="background:#999">Clear</button>
+  </div>
+
+  <div class="small">Tip: Place a printed QR (below) on tables — customers scan it and open this page on their phone to upload photos & feedback easily.</div>
+
+  <div class="qr-box" id="qrBox" style="display:none;">
+    <h4>QR for this upload page</h4>
+    <img id="qrImg" alt="QR code" style="width:180px; height:180px; border-radius:8px; border:1px solid #f0d9bf;">
+    <div class="small">Right-click → Save image to print</div>
+  </div>
+
+  <div class="entries" id="entriesContainer">
+    <h3 style="margin-top:0;">Recent shares</h3>
+    <!-- saved entries will appear here -->
+  </div>
+</div>
+
+<script>
+/* -------------- CONFIG -------------- */
+const UPLOAD_TO_FIREBASE = false; // => set true after you add firebase config below
+/* If you want Firebase: set UPLOAD_TO_FIREBASE = true and add your config in the function initFirebase() below. */
+/* ------------------------------------ */
+
+const photosInput = document.getElementById('photos');
+const preview = document.getElementById('preview');
+const submitBtn = document.getElementById('submitBtn');
+const clearBtn = document.getElementById('clearBtn');
+const entriesContainer = document.getElementById('entriesContainer');
+const qrBox = document.getElementById('qrBox');
+const qrImg = document.getElementById('qrImg');
+
+let selectedFiles = [];
+
+/* preview images when selected */
+photosInput.addEventListener('change', (e) => {
+  selectedFiles = Array.from(e.target.files);
+  preview.innerHTML = '';
+  selectedFiles.forEach(file => {
+    const url = URL.createObjectURL(file);
+    const img = document.createElement('img');
+    img.src = url;
+    preview.appendChild(img);
+  });
+});
+
+/* load existing client-only entries from localStorage */
+function loadEntries() {
+  const data = JSON.parse(localStorage.getItem('cafe_shares_v1') || '[]');
+  renderEntries(data);
+}
+
+/* render entries */
+function renderEntries(items) {
+  const list = items.slice().reverse(); // recent first
+  const html = list.map(it => {
+    const imgs = (it.images || []).map(src => `<img src="${src}" style="width:80px;height:60px;object-fit:cover;border-radius:6px;margin-right:6px;">`).join('');
+    return `<div class="entry">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <strong>${escapeHtml(it.name || 'Anonymous')}</strong>
+        <span>${escapeHtml(it.rating)} ⭐</span>
+      </div>
+      <div style="margin-top:8px;">${escapeHtml(it.feedback)}</div>
+      <div style="margin-top:8px;display:flex;">${imgs}</div>
+      <div style="margin-top:8px;font-size:12px;color:#6b4f2d;">${new Date(it.createdAt).toLocaleString()}</div>
+    </div>`;
+  }).join('');
+  entriesContainer.innerHTML = '<h3 style="margin-top:0;">Recent shares</h3>' + (html || '<div class="small">No shares yet — be the first!</div>');
+}
+
+/* helper: escape HTML to avoid XSS in this demo */
+function escapeHtml(s){ if(!s) return ''; return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+/* handle submit */
+submitBtn.addEventListener('click', async () => {
+  const name = document.getElementById('name').value.trim();
+  const feedback = document.getElementById('feedback').value.trim();
+  const rating = document.getElementById('rating').value;
+
+  if(!feedback){
+    alert('Please write your feedback (or a short note).');
+    return;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Submitting...';
+
+  try {
+    if (UPLOAD_TO_FIREBASE) {
+      await uploadToFirebase({ name, feedback, rating, files: selectedFiles });
+      alert('Thank you! Your feedback uploaded.');
+    } else {
+      // client-only: convert images to data URLs and save in localStorage
+      const imagesData = await Promise.all(selectedFiles.map(f => fileToDataURL(f)));
+      const storage = JSON.parse(localStorage.getItem('cafe_shares_v1') || '[]');
+      storage.push({ name, feedback, rating, images: imagesData, createdAt: Date.now() });
+      localStorage.setItem('cafe_shares_v1', JSON.stringify(storage));
+      alert('Thank you! Your feedback saved locally (demo).');
+      loadEntries();
+    }
+
+    // reset form
+    document.getElementById('name').value = '';
+    document.getElementById('feedback').value = '';
+    document.getElementById('rating').value = '5';
+    photosInput.value = '';
+    preview.innerHTML = '';
+    selectedFiles = [];
+  } catch (err) {
+    console.error(err);
+    alert('Upload failed. See console for details.');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Submit Feedback';
+  }
+});
+
+/* clear demo storage */
+clearBtn.addEventListener('click', () => {
+  if(confirm('Clear all locally saved shares?')) {
+    localStorage.removeItem('cafe_shares_v1');
+    loadEntries();
+  }
+});
+
+/* helper: file -> data URL */
+function fileToDataURL(file){
+  return new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = e => res(e.target.result);
+    reader.onerror = e => rej(e);
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------- Firebase upload (optional) ---------- */
+/* If you want real uploads, set UPLOAD_TO_FIREBASE=true and add your firebase config inside initFirebase().
+   You'll need to enable Firebase Storage & Realtime Database (or Firestore) in Firebase Console.
+*/
+async function initFirebase(){
+  // put your config below (replace the placeholders)
+  /*
+  const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com",
+    messagingSenderId: "SENDER_ID",
+    appId: "APP_ID",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com" // for Realtime DB if used
+  };
+  */
+  if(typeof firebase === 'undefined') {
+    // load firebase libs dynamically
+    await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-storage-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js'); // or firestore
+    // initialize app below after placing config
+    // firebase.initializeApp(firebaseConfig);
+  }
+}
+
+function loadScript(src){
+  return new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej;
+    document.head.appendChild(s);
+  });
+}
+
+async function uploadToFirebase({name, feedback, rating, files}) {
+  // Example flow: upload images to storage, then push metadata to database
+  // IMPORTANT: you must add firebaseConfig and call firebase.initializeApp(firebaseConfig) in initFirebase()
+  if(typeof firebase === 'undefined') throw new Error('Firebase not initialized. Add config and call initFirebase().');
+
+  const storageRef = firebase.storage().ref();
+  const dbRef = firebase.database().ref('shares'); // change to firestore if preferred
+  const uploadPromises = (files || []).map(async (file, idx) => {
+    const path = `shares/${Date.now()}_${idx}_${file.name}`;
+    const ref = storageRef.child(path);
+    await ref.put(file);
+    return await ref.getDownloadURL();
+  });
+
+  const urls = await Promise.all(uploadPromises);
+  const newEntry = { name, feedback, rating, images: urls, createdAt: Date.now() };
+  await dbRef.push(newEntry);
+}
+
+/* ---------- QR generator (prints a QR to open this page) ---------- */
+function generateQRForThisPage(){
+  // Use Google Chart API — works for simple QR images
+  const url = location.href;
+  const qrUrl = 'https://chart.googleapis.com/chart?chs=300x300&cht=qr&chl=' + encodeURIComponent(url);
+  qrImg.src = qrUrl;
+  qrBox.style.display = 'block';
+}
+
+/* ---------- util on load ---------- */
+document.addEventListener('DOMContentLoaded', () => {
+  loadEntries();
+  generateQRForThisPage();
+  // if using Firebase set UPLOAD_TO_FIREBASE=true then call initFirebase() and uncomment firebaseConfig above
+  if(UPLOAD_TO_FIREBASE){
+    initFirebase().catch(err=>console.error('Firebase init error', err));
+  }
+});
+</script>
+
+</body>
+</html>
